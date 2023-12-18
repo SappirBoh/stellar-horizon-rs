@@ -44,7 +44,7 @@ pub struct HorizonHttpClient {
 
 struct HorizonHttpClientInner {
     inner: HttpClient,
-    host: Url,
+    base_url: Url,
     client_name: String,
     client_version: String,
     extra_headers: Option<hyper::HeaderMap>,
@@ -66,7 +66,7 @@ where
 }
 
 impl HorizonHttpClientInner {
-    pub fn new(host: Url) -> Result<HorizonHttpClientInner> {
+    pub fn new(base_url: Url) -> Result<HorizonHttpClientInner> {
         let https = HttpsConnector::new();
         let mut timeout_connector = TimeoutConnector::new(https);
         let duration = Duration::from_secs(60);
@@ -79,7 +79,7 @@ impl HorizonHttpClientInner {
         let client_version = crate::VERSION.to_string();
         Ok(HorizonHttpClientInner {
             inner,
-            host,
+            base_url,
             client_name,
             client_version,
             extra_headers: None,
@@ -87,15 +87,16 @@ impl HorizonHttpClientInner {
     }
 
     pub fn new_with_client(
-        host: Url,
+        base_url: Url,
         client: HttpClient,
         extra_headers: hyper::HeaderMap,
     ) -> Result<HorizonHttpClientInner> {
+        let base_url = base_url.try_into().map_err(|_| Error::InvalidHost)?;
         let client_name = "aurora-rs/stellar-horizon-rs".to_string();
         let client_version = crate::VERSION.to_string();
         Ok(HorizonHttpClientInner {
             inner: client,
-            host,
+            base_url,
             client_name,
             client_version,
             extra_headers: Some(extra_headers),
@@ -103,10 +104,10 @@ impl HorizonHttpClientInner {
     }
 
     pub fn with_extra_headers(
-        host: Url,
+        base_url: Url,
         extra_headers: hyper::HeaderMap,
     ) -> Result<HorizonHttpClientInner> {
-        let mut client = HorizonHttpClientInner::new(host)?;
+        let mut client = HorizonHttpClientInner::new(base_url)?;
         client.extra_headers = Some(extra_headers);
         Ok(client)
     }
@@ -137,19 +138,19 @@ impl HorizonHttpClientInner {
 }
 
 impl HorizonHttpClient {
-    /// Creates a new horizon client with the specified host url str.
-    pub fn new_from_str(host: &str) -> Result<HorizonHttpClient> {
-        let host: Url = host.parse().map_err(|_| Error::InvalidHost)?;
-        HorizonHttpClient::new(host)
+    /// Creates a new horizon client with the specified base url str.
+    pub fn new_from_str(base_url: &str) -> Result<HorizonHttpClient> {
+        let base_url: Url = base_url.parse().map_err(|_| Error::InvalidHost)?;
+        HorizonHttpClient::new(base_url)
     }
 
-    /// Creates a new horizon client with the specified host url str and extra headers
+    /// Creates a new horizon client with the specified base url str and extra headers
     pub fn with_extra_headers(
-        host: &str,
+        base_url: &str,
         extra_headers: hyper::HeaderMap,
     ) -> Result<HorizonHttpClient> {
-        let host: Url = host.parse().map_err(|_| Error::InvalidHost)?;
-        let inner = HorizonHttpClientInner::with_extra_headers(host, extra_headers)?;
+        let base_url: Url = base_url.parse().map_err(|_| Error::InvalidHost)?;
+        let inner = HorizonHttpClientInner::with_extra_headers(base_url, extra_headers)?;
         Ok(HorizonHttpClient {
             inner: Arc::new(inner),
         })
@@ -168,13 +169,13 @@ impl HorizonHttpClient {
         })
     }
 
-    /// Creates a new horizon client with the specified host url.
-    pub fn new<U>(host: U) -> Result<HorizonHttpClient>
+    /// Creates a new horizon client with the specified base url.
+    pub fn new<U>(base_url: U) -> Result<HorizonHttpClient>
     where
         U: TryInto<Url>,
     {
-        let host = host.try_into().map_err(|_| Error::InvalidHost)?;
-        let inner = Arc::new(HorizonHttpClientInner::new(host)?);
+        let base_url = base_url.try_into().map_err(|_| Error::InvalidHost)?;
+        let inner = Arc::new(HorizonHttpClientInner::new(base_url)?);
         Ok(HorizonHttpClient { inner })
     }
 
@@ -215,7 +216,7 @@ async fn execute_request<R: Request>(
     client: &HorizonHttpClient,
     req: R,
 ) -> Result<(HeaderMap, R::Response)> {
-    let uri = req.uri(&client.inner.host)?;
+    let uri = req.uri(&client.inner.base_url)?;
     let request_builder = client.request_builder(uri);
 
     let request = if let Some(body) = req.post_body()? {
@@ -257,7 +258,7 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         loop {
             if self.response.is_none() && self.decoder.is_none() {
-                let uri = self.request.uri(&self.client.host)?;
+                let uri = self.request.uri(&self.client.base_url)?;
                 let mut request_builder =
                     self.client.get(uri).header("Accept", "text/event-stream");
                 if let Some(last_id) = &self.last_id {
