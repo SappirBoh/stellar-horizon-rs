@@ -2085,6 +2085,7 @@ dependencies = [
  "hyper-timeout",
  "hyper-tls",
  "json",
+ "once_cell",
  "serde",
  "serde_derive",
  "serde_json",
