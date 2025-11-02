@@ -294,7 +294,7 @@ pub struct BeginSponsoringFutureReservesOperation {
 pub struct EndSponsoringFutureReservesOperation {
     #[serde(flatten)]
     pub base: OperationBase,
-    pub begin_sponsor: String,
+    pub begin_sponsor: Option<String>,
     pub begin_sponsor_muxed: Option<String>,
     pub begin_sponsor_muxed_id: Option<String>,
 }
