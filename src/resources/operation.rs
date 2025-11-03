@@ -5,6 +5,9 @@ use crate::resources::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
+use once_cell::sync::Lazy;
+use chrono::NaiveDateTime;
+
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type")]
@@ -35,6 +38,10 @@ pub enum Operation {
     LiquidityPoolDeposit(LiquidityPoolDepositOperation),
     LiquidityPoolWithdraw(LiquidityPoolWithdrawOperation),
     InvokeHostFunction(InvokeHostFunctionOperation),
+    RestoreFootprint(RestoreFootprintOperation),
+    ExtendFootprintTtl(ExtendFootprintTtlOperation),
+    #[serde(other)]
+    Unknown, // when deserialization encounters an unrecognized variant
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -65,6 +72,34 @@ pub struct OperationBase {
     pub transaction: Option<Transaction>,
     pub sponsor: Option<String>,
 }
+
+pub static UNKNOWN_OPERATION_BASE: Lazy<OperationBase> = Lazy::new(|| {
+    let created_at = DateTime::<Utc>::from_utc(
+        NaiveDateTime::from_timestamp_opt(0, 0).expect("unix epoch"),
+        Utc,
+    );
+
+    OperationBase {
+        links: OperationLinks {
+            self_: Link { href: "operation_unknown".into(), templated: false },
+            transaction: Link { href: String::new(), templated: false },
+            effects: Link { href: String::new(), templated: false },
+            succeeds: Link { href: String::new(), templated: false },
+            precedes: Link { href: String::new(), templated: false },
+        },
+        id: "__UNKNOWN_OPERATION__".into(),
+        paging_token: String::new(),
+        transaction_successful: false,
+        source_account: String::new(),
+        source_account_muxed: None,
+        source_account_muxed_id: None,
+        type_i: -1,
+        created_at,
+        transaction_hash: String::new(),
+        transaction: None,
+        sponsor: None,
+    }
+});
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct BumpSequenceOperation {
@@ -382,6 +417,18 @@ pub struct InvokeHostFunctionOperation {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct RestoreFootprintOperation {
+    #[serde(flatten)]
+    pub base: OperationBase,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ExtendFootprintTtlOperation {
+    #[serde(flatten)]
+    pub base: OperationBase,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct OperationLinks {
     #[serde(rename = "self")]
     pub self_: Link,
@@ -419,7 +466,14 @@ impl Operation {
             Operation::LiquidityPoolDeposit(op) => &op.base,
             Operation::LiquidityPoolWithdraw(op) => &op.base,
             Operation::InvokeHostFunction(op) => &op.base,
+            Operation::RestoreFootprint(op) => &op.base,
+            Operation::ExtendFootprintTtl(op) => &op.base,
+            Operation::Unknown => &*UNKNOWN_OPERATION_BASE, // Unknown variant has no base, return a static fallback
         }
+    }
+
+    pub fn base_is_fallback(&self) -> bool {
+        std::ptr::eq(self.base(), &*UNKNOWN_OPERATION_BASE)
     }
 }
 
