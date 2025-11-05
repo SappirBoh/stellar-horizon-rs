@@ -4,7 +4,7 @@ use crate::resources::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
+use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString, DefaultOnNull};
 use once_cell::sync::Lazy;
 use chrono::NaiveDateTime;
 
@@ -430,25 +430,27 @@ pub struct InvokeHostFunctionOperation {
     #[serde(flatten)]
     pub base: OperationBase,
     pub function: HostFunctionType,
+    #[serde_as(deserialize_as = "DefaultOnNull")]
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub parameters: Vec<InvokeContractParameter>,
     #[serde_as(as = "NoneAsEmptyString")]
     pub address: Option<String>,
     #[serde_as(as = "NoneAsEmptyString")]
     pub salt: Option<String>,
+    #[serde_as(deserialize_as = "DefaultOnNull")]
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub asset_balance_changes: Vec<AssetBalanceChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ExtendFootprintTTLOperation {
+pub struct RestoreFootprintOperation {
     #[serde(flatten)]
     pub base: OperationBase,
     pub extend_to: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct RestoreFootprintOperation {
+pub struct ExtendFootprintTTLOperation {
     #[serde(flatten)]
     pub base: OperationBase,
 }
