@@ -5,11 +5,11 @@ use crate::resources::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString, DefaultOnNull};
-use once_cell::sync::Lazy;
-use chrono::NaiveDateTime;
+use serde::de::{self, Deserializer};
+use serde_json::Value;
 
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum Operation {
@@ -40,8 +40,7 @@ pub enum Operation {
     InvokeHostFunction(InvokeHostFunctionOperation),
     ExtendFootprintTTL(ExtendFootprintTTLOperation),
     RestoreFootprint(RestoreFootprintOperation),
-    #[serde(other)]
-    Unknown, // when deserialization encounters an unrecognized variant
+    Other(OtherOperation), 
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -72,34 +71,6 @@ pub struct OperationBase {
     pub transaction: Option<Transaction>,
     pub sponsor: Option<String>,
 }
-
-pub static UNKNOWN_OPERATION_BASE: Lazy<OperationBase> = Lazy::new(|| {
-    let created_at = DateTime::<Utc>::from_utc(
-        NaiveDateTime::from_timestamp_opt(0, 0).expect("unix epoch"),
-        Utc,
-    );
-
-    OperationBase {
-        links: OperationLinks {
-            self_: Link { href: "operation_unknown".into(), templated: false },
-            transaction: Link { href: String::new(), templated: false },
-            effects: Link { href: String::new(), templated: false },
-            succeeds: Link { href: String::new(), templated: false },
-            precedes: Link { href: String::new(), templated: false },
-        },
-        id: "__UNKNOWN_OPERATION__".into(),
-        paging_token: String::new(),
-        transaction_successful: false,
-        source_account: String::new(),
-        source_account_muxed: None,
-        source_account_muxed_id: None,
-        type_i: -1,
-        created_at,
-        transaction_hash: String::new(),
-        transaction: None,
-        sponsor: None,
-    }
-});
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct BumpSequenceOperation {
@@ -456,6 +427,14 @@ pub struct ExtendFootprintTTLOperation {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct OtherOperation {
+    #[serde(flatten)]
+    pub base: OperationBase,
+    #[serde(default)]
+    pub op_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct OperationLinks {
     #[serde(rename = "self")]
     pub self_: Link,
@@ -495,12 +474,63 @@ impl Operation {
             Operation::InvokeHostFunction(op) => &op.base,
             Operation::ExtendFootprintTTL(op) => &op.base,
             Operation::RestoreFootprint(op) => &op.base,
-            Operation::Unknown => &*UNKNOWN_OPERATION_BASE, // Unknown variant has no base, return a static fallback
+            Operation::Other(op) => &op.base,
         }
     }
 
-    pub fn base_is_fallback(&self) -> bool {
-        std::ptr::eq(self.base(), &*UNKNOWN_OPERATION_BASE)
+}
+
+impl<'de> Deserialize<'de> for Operation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v = Value::deserialize(deserializer)?;
+
+        let ty: String = v.get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| de::Error::missing_field("type"))?
+            .to_string();
+
+        fn as_op<T: for<'a> Deserialize<'a>, E: de::Error>(v: &Value) -> Result<T, E> {
+            serde_json::from_value::<T>(v.clone()).map_err(E::custom)
+        }
+
+        match ty.as_str() {
+            "create_account" => Ok(Operation::CreateAccount(as_op(&v)?)),
+            "payment" => Ok(Operation::Payment(as_op(&v)?)),
+            "path_payment_strict_receive" => Ok(Operation::PathPaymentStrictReceive(as_op(&v)?)),
+            "manage_sell_offer" => Ok(Operation::ManageSellOffer(as_op(&v)?)),
+            "create_passive_sell_offer" => Ok(Operation::CreatePassiveSellOffer(as_op(&v)?)),
+            "set_options" => Ok(Operation::SetOptions(as_op(&v)?)),
+            "change_trust" => Ok(Operation::ChangeTrust(as_op(&v)?)),
+            "allow_trust" => Ok(Operation::AllowTrust(as_op(&v)?)),
+            "account_merge" => Ok(Operation::AccountMerge(as_op(&v)?)),
+            "inflation" => Ok(Operation::Inflation(as_op(&v)?)),
+            "manage_data" => Ok(Operation::ManageData(as_op(&v)?)),
+            "bump_sequence" => Ok(Operation::BumpSequence(as_op(&v)?)),
+            "manage_buy_offer" => Ok(Operation::ManageBuyOffer(as_op(&v)?)),
+            "path_payment_strict_send" => Ok(Operation::PathPaymentStrictSend(as_op(&v)?)),
+            "create_claimable_balance" => Ok(Operation::CreateClaimableBalance(as_op(&v)?)),
+            "claim_claimable_balance" => Ok(Operation::ClaimClaimableBalance(as_op(&v)?)),
+            "begin_sponsoring_future_reserves" => Ok(Operation::BeginSponsoringFutureReserves(as_op(&v)?)),
+            "end_sponsoring_future_reserves" => Ok(Operation::EndSponsoringFutureReserves(as_op(&v)?)),
+            "revoke_sponsorship" => Ok(Operation::RevokeSponsorship(as_op(&v)?)),
+            "clawback" => Ok(Operation::Clawback(as_op(&v)?)),
+            "clawback_claimable_balance" => Ok(Operation::ClawbackClaimableBalance(as_op(&v)?)),
+            "set_trust_line_flags" => Ok(Operation::SetTrustLineFlags(as_op(&v)?)),
+            "liquidity_pool_deposit" => Ok(Operation::LiquidityPoolDeposit(as_op(&v)?)),
+            "liquidity_pool_withdraw" => Ok(Operation::LiquidityPoolWithdraw(as_op(&v)?)),
+            "invoke_host_function" => Ok(Operation::InvokeHostFunction(as_op(&v)?)),
+            "restore_footprint" => Ok(Operation::RestoreFootprint(as_op(&v)?)),
+            "extend_footprint_ttl" => Ok(Operation::ExtendFootprintTTL(as_op(&v)?)),
+
+            _ => {
+                let mut other = as_op::<OtherOperation, D::Error>(&v)?;
+                other.op_type = ty;
+                Ok(Operation::Other(other))
+            }
+        }
     }
 }
 
