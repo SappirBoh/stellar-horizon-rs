@@ -414,14 +414,14 @@ pub struct InvokeHostFunctionOperation {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct RestoreFootprintOperation {
+pub struct ExtendFootprintTTLOperation {
     #[serde(flatten)]
     pub base: OperationBase,
     pub extend_to: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ExtendFootprintTTLOperation {
+pub struct RestoreFootprintOperation {
     #[serde(flatten)]
     pub base: OperationBase,
 }
