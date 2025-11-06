@@ -432,6 +432,9 @@ pub struct OtherOperation {
     pub base: OperationBase,
     #[serde(default)]
     pub op_type: String,
+
+    #[serde(default)]
+    pub raw_value: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -528,6 +531,7 @@ impl<'de> Deserialize<'de> for Operation {
             _ => {
                 let mut other = as_op::<OtherOperation, D::Error>(&v)?;
                 other.op_type = ty;
+                other.raw_value = v;
                 Ok(Operation::Other(other))
             }
         }
