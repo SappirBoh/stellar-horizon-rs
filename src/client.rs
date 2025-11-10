@@ -13,6 +13,7 @@ use futures::Stream;
 use hyper::client::{Client, ResponseFuture};
 use hyper_timeout::TimeoutConnector;
 use hyper_tls::HttpsConnector;
+use serde_json::value;
 use std::convert::TryInto;
 use std::marker::Unpin;
 use std::pin::Pin;
@@ -239,7 +240,7 @@ async fn execute_request<R: Request>(
         let headers = response.headers().clone();
         let bytes = hyper::body::to_bytes(response).await?;
         let v: serde_json::Value = serde_json::from_slice(&bytes)?;
-        println!("response json: {}", v);
+        println!("response json: {}", value);
         let result: R::Response = serde_json::from_slice(&bytes)?;
         Ok((headers, result))
     } else if response.status().is_client_error() {
