@@ -239,13 +239,18 @@ async fn execute_request<R: Request>(
     if response.status().is_success() {
         let headers = response.headers().clone();
         let bytes = hyper::body::to_bytes(response).await?;
-        let v: serde_json::Value = serde_json::from_slice(&bytes)?;
-        println!("response json: {}", v);
-        let result: R::Response = serde_json::from_slice(&bytes)?;
+        let result  = match serde_json::from_slice(&bytes) {
+            Ok(res) => res,
+            Err(err) => {
+                println!("response json: {:#?}", serde_json::from_slice(&bytes)?);
+                return Err(Error::InvalidPredicate);
+            }
+        };
         Ok((headers, result))
     } else if response.status().is_client_error() {
         let bytes = hyper::body::to_bytes(response).await?;
         let result: HorizonError = serde_json::from_slice(&bytes)?;
+        println!("response json: {:#?}", bytes);
         Err(Error::HorizonRequestError(result))
     } else {
         Err(Error::HorizonServerError)
